@@ -1,0 +1,295 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────
+
+enum Role {
+  RECRUITER
+  STUDENT
+}
+
+enum VerificationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ClaimType {
+  INTERNSHIP
+  PROJECT
+  SKILL
+  CERTIFICATE
+  EDUCATION
+}
+
+enum FlagSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum SkillStatus {
+  VERIFIED
+  PARTIAL
+  UNVERIFIED
+}
+
+enum DocumentType {
+  OFFER_LETTER
+  CERTIFICATE
+  TRANSCRIPT
+  RECOMMENDATION
+  OTHER
+}
+
+// ─── User (Auth) ─────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student              Student?
+  verificationsCreated VerificationRequest[] @relation("CreatedBy")
+  auditLogs            AuditLog[]
+
+  @@map("users")
+}
+
+// ─── Student Profile ─────────────────────────────────────
+
+model Student {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  githubUsername  String?
+  linkedinUrl    String?
+  resumeUrl      String?
+  consentGiven   Boolean  @default(false)
+  consentDate    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  claims               ResumeClaim[]
+  verificationRequests VerificationRequest[]
+
+  @@map("students")
+}
+
+// ─── Resume Claims ───────────────────────────────────────
+
+model ResumeClaim {
+  id          String    @id @default(cuid())
+  studentId   String
+  type        ClaimType
+  title       String
+  company     String?
+  description String?
+  skills      String[]
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime  @default(now())
+
+  student            Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  inconsistencyFlags InconsistencyFlag[]
+  skillVerifications SkillVerification[]
+
+  @@map("resume_claims")
+}
+
+// ─── Verification Request ────────────────────────────────
+
+model VerificationRequest {
+  id          String             @id @default(cuid())
+  studentId   String
+  createdById String
+  status      VerificationStatus @default(PENDING)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  student             Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdBy           User                 @relation("CreatedBy", fields: [createdById], references: [id])
+  githubAnalysis      GitHubAnalysis?
+  companyVerification CompanyVerification?
+  documentAnalyses    DocumentAnalysis[]
+  result              VerificationResult?
+  auditLogs           AuditLog[]
+
+  @@map("verification_requests")
+}
+
+// ─── GitHub Analysis ─────────────────────────────────────
+
+model GitHubAnalysis {
+  id                    String   @id @default(cuid())
+  verificationRequestId String   @unique
+  username              String
+  totalRepos            Int      @default(0)
+  totalCommits          Int      @default(0)
+  forkedRepos           Int      @default(0)
+  originalRepos         Int      @default(0)
+  languages             Json
+  contributionScore     Float    @default(0)
+  accountCreatedAt      DateTime?
+  rawData               Json?
+  analyzedAt            DateTime @default(now())
+
+  verificationRequest VerificationRequest @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
+  repositories        Repository[]
+
+  @@map("github_analyses")
+}
+
+model Repository {
+  id               String   @id @default(cuid())
+  githubAnalysisId String
+  name             String
+  url              String
+  isFork           Boolean  @default(false)
+  stars            Int      @default(0)
+  language         String?
+  languages        Json?
+  commitCount      Int      @default(0)
+  firstCommitAt    DateTime?
+  lastCommitAt     DateTime?
+  description      String?
+
+  githubAnalysis GitHubAnalysis @relation(fields: [githubAnalysisId], references: [id], onDelete: Cascade)
+
+  @@map("repositories")
+}
+
+// ─── Company Verification (STUBBED) ─────────────────────
+
+model CompanyVerification {
+  id                    String   @id @default(cuid())
+  verificationRequestId String   @unique
+  companyName           String
+  contactEmail          String?
+  claimedRole           String?
+  claimedStartDate      DateTime?
+  claimedEndDate        DateTime?
+  verified              Boolean?
+  responseReceived      Boolean  @default(false)
+  responseDate          DateTime?
+  responseNotes         String?
+  createdAt             DateTime @default(now())
+
+  verificationRequest VerificationRequest @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
+
+  @@map("company_verifications")
+}
+
+// ─── Document Analysis (STUBBED) ─────────────────────────
+
+model DocumentAnalysis {
+  id                    String       @id @default(cuid())
+  verificationRequestId String
+  documentType          DocumentType
+  fileName              String
+  fileUrl               String?
+  extractedText         String?
+  metadataCreatedAt     DateTime?
+  metadataModifiedAt    DateTime?
+  authenticityScore     Float?
+  flags                 String[]
+  analyzedAt            DateTime     @default(now())
+
+  verificationRequest VerificationRequest @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
+
+  @@map("document_analyses")
+}
+
+// ─── Verification Result ─────────────────────────────────
+
+model VerificationResult {
+  id                    String    @id @default(cuid())
+  verificationRequestId String    @unique
+  overallRiskScore      Float
+  riskLevel             RiskLevel
+  githubScore           Float     @default(0)
+  companyScore          Float     @default(0)
+  documentScore         Float     @default(0)
+  temporalScore         Float     @default(0)
+  summary               String?
+  recommendation        String?
+  createdAt             DateTime  @default(now())
+
+  verificationRequest VerificationRequest @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
+  inconsistencyFlags  InconsistencyFlag[]
+  skillVerifications  SkillVerification[]
+
+  @@map("verification_results")
+}
+
+// ─── Inconsistency Flags ─────────────────────────────────
+
+model InconsistencyFlag {
+  id                   String       @id @default(cuid())
+  verificationResultId String
+  claimId              String?
+  severity             FlagSeverity
+  category             String
+  message              String
+  evidenceSources      String[]
+  createdAt            DateTime     @default(now())
+
+  verificationResult VerificationResult @relation(fields: [verificationResultId], references: [id], onDelete: Cascade)
+  claim              ResumeClaim?       @relation(fields: [claimId], references: [id])
+
+  @@map("inconsistency_flags")
+}
+
+// ─── Skill Verification ──────────────────────────────────
+
+model SkillVerification {
+  id                   String      @id @default(cuid())
+  verificationResultId String
+  claimId              String?
+  skillName            String
+  status               SkillStatus
+  evidenceRepos        String[]
+  confidenceScore      Float       @default(0)
+
+  verificationResult VerificationResult @relation(fields: [verificationResultId], references: [id], onDelete: Cascade)
+  claim              ResumeClaim?       @relation(fields: [claimId], references: [id])
+
+  @@map("skill_verifications")
+}
+
+// ─── Audit Log ───────────────────────────────────────────
+
+model AuditLog {
+  id                    String   @id @default(cuid())
+  userId                String?
+  verificationRequestId String?
+  action                String
+  details               Json?
+  ipAddress             String?
+  createdAt             DateTime @default(now())
+
+  user                User?                @relation(fields: [userId], references: [id])
+  verificationRequest VerificationRequest? @relation(fields: [verificationRequestId], references: [id])
+
+  @@map("audit_logs")
+}
