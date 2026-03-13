@@ -32,8 +32,14 @@ export class VerificationOrchestratorService {
             if (!student) throw new Error("Student not found");
 
             // 2. LAYER 2: Data Collection (Parallel Execution)
+            // Collect any GitHub project repo URLs the student has claimed
+            const claimedRepoUrls = student.claims
+                .filter((c) => c.type === "PROJECT" || c.type === "INTERNSHIP")
+                .map((c) => (c as any).repoUrl as string | null)
+                .filter((url): url is string => !!url);
+
             const [githubResult, docResult] = await Promise.all([
-                student.githubUsername ? githubAnalyzer.analyzeProfile(student.githubUsername).catch(e => {
+                student.githubUsername ? githubAnalyzer.analyzeProfile(student.githubUsername, claimedRepoUrls).catch(e => {
                     logger.warn(`GitHub analysis failed: ${e.message}`);
                     return null;
                 }) : Promise.resolve(null),
@@ -122,7 +128,8 @@ export class VerificationOrchestratorService {
                 : 0.5; // neutral if no companies to verify
 
             const fraudResult = fraudScorer.calculateRisk({
-                githubScore: (githubResult?.contributionScore || 0) / 100,
+                // githubRisk IS rG (0.0 = legit, 1.0 = fraud). Convert to trust score (1 - rG).
+                githubScore: githubResult ? 1.0 - githubResult.githubRisk : 0.5,
                 companyScore: companyScore,
                 documentScore: docResult?.authenticityScore || 0.8,
                 temporalScore: temporalResult.score
@@ -135,7 +142,7 @@ export class VerificationOrchestratorService {
                     overallRiskScore: fraudResult.overallRiskScore,
                     riskLevel: fraudResult.riskLevel,
                     summary: fraudResult.summary,
-                    githubScore: (githubResult?.contributionScore || 0) / 100,
+                    githubScore: githubResult ? 1.0 - githubResult.githubRisk : 0.5,
                     companyScore: companyScore,
                     documentScore: docResult?.authenticityScore || 0.8,
                     temporalScore: temporalResult.score,

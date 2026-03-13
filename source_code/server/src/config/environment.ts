@@ -6,7 +6,11 @@ const envSchema = z.object({
   DATABASE_URL: z.string(),
   JWT_SECRET: z.string().default("dev-secret-change-in-production"),
   JWT_EXPIRES_IN: z.string().default("7d"),
-  GITHUB_TOKEN: z.string().optional(),
+  // GITHUB_TOKEN: z.string().optional(),
+  GITHUB_APP_ID: z.string().optional(),
+  GITHUB_APP_PRIVATE_KEY: z.string().optional(),
+  GITHUB_CLIENT_ID: z.string().optional(),
+  GITHUB_CLIENT_SECRET: z.string().optional(),
   GITHUB_API_URL: z.string().default("https://api.github.com"),
 });
 

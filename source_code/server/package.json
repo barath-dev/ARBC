@@ -13,8 +13,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.29.3",
+  "packageManager": "pnpm@10.30.3",
   "dependencies": {
+    "@octokit/auth-app": "^8.2.0",
     "@prisma/client": "^5.22.0",
     "@types/node": "^25.2.3",
     "bcryptjs": "^3.0.3",

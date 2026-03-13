@@ -77,15 +77,16 @@ model User {
 // ─── Student Profile ─────────────────────────────────────
 
 model Student {
-  id             String   @id @default(cuid())
-  userId         String   @unique
+  id              String    @id @default(cuid())
+  userId          String    @unique
   githubUsername  String?
-  linkedinUrl    String?
-  resumeUrl      String?
-  consentGiven   Boolean  @default(false)
-  consentDate    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  githubAccessToken String? // Stored OAuth access token for GitHub API calls
+  linkedinUrl     String?
+  resumeUrl       String?
+  consentGiven    Boolean   @default(false)
+  consentDate     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   claims               ResumeClaim[]
@@ -102,6 +103,7 @@ model ResumeClaim {
   type        ClaimType
   title       String
   company     String?
+  repoUrl     String?   // GitHub repo URL for PROJECT/INTERNSHIP claims
   description String?
   skills      String[]
   startDate   DateTime?

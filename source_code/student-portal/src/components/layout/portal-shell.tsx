@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
-import { Shield, UserCircle, Activity, LogOut } from "lucide-react";
+import { Shield, UserCircle, Activity, LogOut, Briefcase, FileCode2 } from "lucide-react";
 
 export function PortalShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const { user, logout } = useAuthStore();
 
     const navigation = [
-        { name: "My Profile", href: "/", icon: UserCircle },
-        { name: "Verification Status", href: "/status", icon: Activity },
+        { name: "My Profile", href: "/", icon: UserCircle, exact: true },
+        // { name: "Projects", href: "/projects", icon: FileCode2, exact: false },
+        // { name: "Experience", href: "/experience", icon: Briefcase, exact: false },
+        { name: "Verification Status", href: "/status", icon: Activity, exact: false },
     ];
 
     return (
@@ -44,14 +46,16 @@ export function PortalShell({ children }: { children: React.ReactNode }) {
                     <aside className="w-full md:w-64 flex-shrink-0">
                         <nav className="flex flex-row md:flex-col gap-2 overflow-x-auto pb-2 md:pb-0" aria-label="Sidebar">
                             {navigation.map((item) => {
-                                const isActive = pathname === item.href;
+                                const isActive = item.exact
+                                    ? pathname === item.href
+                                    : pathname.startsWith(item.href);
                                 return (
                                     <Link
                                         key={item.name}
                                         href={item.href}
                                         className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap ${isActive
-                                                ? "bg-white text-slate-900 shadow-sm border border-slate-200"
-                                                : "text-slate-600 hover:bg-slate-200/50 hover:text-slate-900"
+                                            ? "bg-white text-slate-900 shadow-sm border border-slate-200"
+                                            : "text-slate-600 hover:bg-slate-200/50 hover:text-slate-900"
                                             }`}
                                     >
                                         <item.icon

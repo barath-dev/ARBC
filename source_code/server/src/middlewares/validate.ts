@@ -14,7 +14,7 @@ export function validate(schema: z.ZodType, field: RequestField = "body") {
         "Validation failed",
         422,
         "VALIDATION_ERROR",
-        z.prettifyError(result.error)
+        result.error.format()
       );
       return;
     }

@@ -42,6 +42,8 @@ build/Release
 node_modules/
 jspm_packages/
 
+JPlag-6.3.0/
+
 # TypeScript v1 declaration files
 typings/
 

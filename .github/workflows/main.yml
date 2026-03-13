@@ -1,0 +1,100 @@
+name: Deploy ARBC-Backend
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: "${{ secrets.DOCKER_USERNAME }}"
+          password: "${{ secrets.DOCKER_PASSWORD }}"
+
+      - name: Build and Push Multi-Arch Docker Image
+        run: |
+          cd source_code/server
+          docker buildx build \
+          --platform linux/amd64,linux/arm64 \
+          -t barathwaj911/arbc-backend:latest \
+          --build-arg NODE_ENV=production \
+          --no-cache \
+          --push .
+
+  deploy-main:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: main
+    steps:
+      - name: Stop and Remove Existing Container (if exists)
+        run: |
+          sudo docker stop arbc-backend-container || true
+          sudo docker rm arbc-backend-container || true
+
+      - name: Remove old images
+        run: |
+          sudo docker image prune -af --filter "label=com.docker.compose.project=arbc"
+          sudo docker rmi barathwaj911/arbc-backend:latest || true
+
+      - name: Pull Image from Docker Hub
+        run: sudo docker pull barathwaj911/arbc-backend:latest
+
+      - name: Run Docker Container
+        run: |
+          sudo docker run -d -p 3000:3000 --name arbc-backend-container \
+            -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            -e JWT_SECRET='${{ secrets.JWT_SECRET }}' \
+            -e JWT_EXPIRES_IN='${{ secrets.JWT_EXPIRES_IN }}' \
+            -e GITHUB_TOKEN='${{ secrets.GITHUB_TOKEN }}' \
+            -e PORT='3000' \
+            -e NODE_ENV='production' \
+              barathwaj911/arbc-backend:latest
+
+      - name: Clean up old images
+        run: sudo docker image prune -af
+
+  deploy-dev:
+    needs: build
+    if: github.ref == 'refs/heads/dev'
+    runs-on: dev
+    steps:
+      - name: Stop and Remove Existing Container (if exists)
+        run: |
+          sudo docker stop arbc-backend-container || true
+          sudo docker rm arbc-backend-container || true
+
+      - name: Remove old images
+        run: |
+          sudo docker image prune -af --filter "label=com.docker.compose.project=arbc"
+          sudo docker rmi barathwaj911/arbc-backend:latest || true
+
+      - name: Pull Image from Docker Hub
+        run: sudo docker pull barathwaj911/arbc-backend:latest
+
+      - name: Run Docker Container
+        run: |
+          sudo docker run -d -p 3000:3000 --name arbc-backend-container \
+            -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            -e JWT_SECRET='${{ secrets.JWT_SECRET }}' \
+            -e JWT_EXPIRES_IN='${{ secrets.JWT_EXPIRES_IN }}' \
+            -e GITHUB_TOKEN='${{ secrets.GITHUB_TOKEN }}' \
+            -e PORT='3000' \
+            -e NODE_ENV='development' \
+              barathwaj911/arbc-backend:latest
+
+      - name: Clean up old images
+        run: sudo docker image prune -af

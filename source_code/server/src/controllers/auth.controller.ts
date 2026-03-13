@@ -4,6 +4,7 @@ import { hashPassword, comparePassword } from "../utils/password";
 import { generateToken } from "../utils/jwt";
 import { sendSuccess, sendError } from "../utils/api-response";
 import { RegisterInput, LoginInput } from "../types";
+import { env } from "../config/environment";
 
 export async function register(
   req: Request<{}, {}, RegisterInput>,
@@ -133,5 +134,129 @@ export async function getMe(
     sendSuccess(res, { user });
   } catch (error) {
     next(error);
+  }
+}
+
+export async function githubOAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user!.userId; // Passed from requireAuth middleware
+
+    if (!env.GITHUB_CLIENT_ID) {
+      sendError(res, "GitHub Client ID not configured", 500, "CONFIG_ERROR");
+      return;
+    }
+
+    // We pass the JWT token in the 'state' parameter to persist the user session across the OAuth flow.
+    // In production, you might want to sign/encrypt this state or use a short-lived token.
+    const state = req.headers.authorization?.split(" ")[1] || "";
+    
+    // Explicitly pass the local redirect URI so GitHub returns to localhost instead of the production Vercel URL
+    const redirectUri = "http://localhost:3000/api/auth/github/callback";
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${env.GITHUB_CLIENT_ID}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
+
+    sendSuccess(res, { url: githubAuthUrl });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function githubOAuthCallback(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { code, state: token } = req.query;
+
+    if (!code || typeof code !== "string" || !token || typeof token !== "string") {
+      res.redirect("http://localhost:3001/status?error=invalid_oauth_callback");
+      return;
+    }
+
+    // Since token is passed in state, we verify it here
+    let userId: string;
+    let role: string;
+    try {
+      const { verifyToken } = require("../utils/jwt");
+      const payload = verifyToken(token);
+      userId = payload.userId;
+      role = payload.role;
+    } catch (err) {
+      res.redirect("http://localhost:3001/status?error=invalid_state_token");
+      return;
+    }
+
+    if (role !== "STUDENT") {
+      res.redirect("http://localhost:3001/status?error=unauthorized_role");
+      return;
+    }
+
+    if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) {
+      res.redirect("http://localhost:3001/status?error=server_misconfiguration");
+      return;
+    }
+
+    // 1. Exchange code for access token
+    const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        client_id: env.GITHUB_CLIENT_ID,
+        client_secret: env.GITHUB_CLIENT_SECRET,
+        code,
+        redirect_uri: "http://localhost:3000/api/auth/github/callback",
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      throw new Error(`Failed to exchange token, status: ${tokenResponse.status}`);
+    }
+
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+
+    if (!accessToken) {
+      res.redirect("http://localhost:3001/status?error=github_token_exchange_failed");
+      return;
+    }
+
+    // 2. Fetch the user's GitHub profile
+    const userResponse = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `token ${accessToken}`,
+        "User-Agent": "ARBC-Server",
+      },
+    });
+
+    if (!userResponse.ok) {
+      throw new Error(`Failed to fetch user profile, status: ${userResponse.status}`);
+    }
+
+    const userData = await userResponse.json();
+    const githubUsername = userData.login;
+
+    if (!githubUsername) {
+      res.redirect("http://localhost:3001/status?error=github_profile_fetch_failed");
+      return;
+    }
+
+    // 3. Update the student record with username AND store the access token for future API calls
+    await prisma.student.update({
+      where: { userId },
+      data: { githubUsername, githubAccessToken: accessToken },
+    });
+
+    // 4. Redirect the user back to the student portal success page or dashboard
+    res.redirect(`http://localhost:3001/?github_connected=true&token=${token}`);
+  } catch (error) {
+    console.error("GitHub OAuth Callback Error:", error);
+    res.redirect("http://localhost:3001/status?error=oauth_processing_failed");
   }
 }

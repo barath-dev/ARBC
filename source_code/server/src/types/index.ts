@@ -17,9 +17,8 @@ export const loginSchema = z.object({
 // ─── Student Schemas ─────────────────────────────────────
 
 export const createStudentSchema = z.object({
-  githubUsername: z.string().optional(),
-  linkedinUrl: z.url().optional(),
-  resumeUrl: z.url().optional(),
+  linkedinUrl: z.union([z.literal(""), z.string().url()]).optional(),
+  resumeUrl: z.union([z.literal(""), z.string().url()]).optional(),
   consentGiven: z.boolean().default(false),
 });
 
@@ -31,11 +30,14 @@ export const createClaimSchema = z.object({
   type: z.enum(["INTERNSHIP", "PROJECT", "SKILL", "CERTIFICATE", "EDUCATION"]),
   title: z.string().min(1, "Title is required"),
   company: z.string().optional(),
+  repoUrl: z.union([z.literal(""), z.string().url()]).optional(),
   description: z.string().optional(),
   skills: z.array(z.string()).default([]),
   startDate: z.iso.datetime().optional(),
   endDate: z.iso.datetime().optional(),
 });
+
+export const updateClaimSchema = createClaimSchema.partial();
 
 // ─── Verification Schemas ────────────────────────────────
 
@@ -57,6 +59,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateStudentInput = z.infer<typeof createStudentSchema>;
 export type UpdateStudentInput = z.infer<typeof updateStudentSchema>;
 export type CreateClaimInput = z.infer<typeof createClaimSchema>;
+export type UpdateClaimInput = z.infer<typeof updateClaimSchema>;
 export type CreateVerificationInput = z.infer<typeof createVerificationSchema>;
 export type PaginationInput = z.infer<typeof paginationSchema>;
 
