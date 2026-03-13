@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
 
-export default function AuthProvider({ children }: { children: React.ReactNode }) {
+function AuthLogic({ children }: { children: React.ReactNode }) {
     const { token, user } = useAuthStore();
     const router = useRouter();
     const pathname = usePathname();
@@ -35,4 +35,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     }
 
     return <>{children}</>;
+}
+
+export default function AuthProvider({ children }: { children: React.ReactNode }) {
+    return (
+        <Suspense fallback={null}>
+            <AuthLogic>{children}</AuthLogic>
+        </Suspense>
+    );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams, useRouter } from "next/navigation";
 import { PortalShell } from "@/components/layout/portal-shell";
@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/lib/store";
 import Link from "next/link";
 
-export default function ProfileDashboard() {
+function DashboardContent() {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -246,5 +246,21 @@ function ClaimCard({ claim, editHref, deleteClaim }: { claim: any; editHref: str
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+export default function ProfileDashboard() {
+  return (
+    <Suspense fallback={
+      <PortalShell>
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-slate-200 rounded w-1/3 mb-6" />
+          <div className="h-32 bg-slate-200 rounded w-full" />
+          <div className="h-64 bg-slate-200 rounded w-full" />
+        </div>
+      </PortalShell>
+    }>
+      <DashboardContent />
+    </Suspense>
   );
 }
