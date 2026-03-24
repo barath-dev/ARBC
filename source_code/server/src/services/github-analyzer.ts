@@ -1,4 +1,4 @@
-import { App } from "octokit";
+import { App, Octokit } from "octokit";
 import { env } from "../config/environment";
 import { GITHUB_LIMITS, GITHUB_RISK_WEIGHTS, BURST_WINDOW_DAYS } from "../config/constants";
 import { logger } from "../utils/logger";
@@ -16,6 +16,7 @@ export interface RepoContributionStats {
     firstCommitAt: Date | null;
     lastCommitAt: Date | null;
     description: string | null;
+    isPrivate: boolean;
     /** 0.0 (no suspicion) → 1.0 (very suspicious) for this individual repo */
     repoRisk: number;
 }
@@ -76,16 +77,26 @@ export class GitHubAnalyzerService {
 
     // ── Private helpers ─────────────────────────────────────────────────────
 
-    /** Returns an authenticated octokit for the given username (falls back to app octokit). */
-    private async getOctokit(username: string) {
-        let octokit = this.app.octokit;
+    /**
+     * Returns an authenticated Octokit instance for the given user.
+     *
+     * Priority:
+     * 1. User's own OAuth token (full private-repo access) — used when `oauthToken` is provided.
+     * 2. GitHub App installation token (public-repo access only) — fallback.
+     */
+    private async getOctokitForUser(username: string, oauthToken?: string): Promise<Octokit> {
+        if (oauthToken) {
+            return new Octokit({ auth: oauthToken });
+        }
+
+        // Fallback: GitHub App flow (public repos only)
         try {
             const { data: installation } = await this.app.octokit.rest.apps.getUserInstallation({ username });
-            octokit = await this.app.getInstallationOctokit(installation.id);
+            return await this.app.getInstallationOctokit(installation.id) as unknown as Octokit;
         } catch {
-            logger.warn(`No GitHub App installation for ${username}. Using unauthenticated app API.`);
+            logger.warn(`No GitHub App installation for ${username} and no OAuth token. Using unauthenticated app API.`);
+            return this.app.octokit as unknown as Octokit;
         }
-        return octokit;
     }
 
     /**
@@ -94,7 +105,7 @@ export class GitHubAnalyzerService {
      * Returns commit dates for burst-pattern detection.
      */
     private async fetchCommitDates(
-        octokit: Awaited<ReturnType<typeof this.getOctokit>>,
+        octokit: Octokit,
         owner: string,
         repo: string,
         authorUsername: string
@@ -147,7 +158,7 @@ export class GitHubAnalyzerService {
      * score: 0.0 = single-language (more suspicious), 1.0 = many languages.
      */
     private async fetchLanguageDiversity(
-        octokit: Awaited<ReturnType<typeof this.getOctokit>>,
+        octokit: Octokit,
         owner: string,
         repo: string
     ): Promise<{ languages: Record<string, number>; diversityScore: number }> {
@@ -169,11 +180,13 @@ export class GitHubAnalyzerService {
      * Analyses a **specific repository** to produce contribution stats for the
      * given student (identified by `studentUsername`).
      *
+     * When `userOAuthToken` is provided, private repositories are accessible.
      * Called per PROJECT/INTERNSHIP claim that includes a `repoUrl`.
      */
     public async analyzeRepoContributions(
         repoUrl: string,
-        studentUsername: string
+        studentUsername: string,
+        userOAuthToken?: string
     ): Promise<RepoContributionStats> {
         const parsed = parseRepoUrl(repoUrl);
         if (!parsed) throw new Error(`Invalid GitHub repo URL: ${repoUrl}`);
@@ -181,7 +194,7 @@ export class GitHubAnalyzerService {
         const { owner, repo } = parsed;
         logger.info(`Analyzing repo contributions: ${owner}/${repo} for ${studentUsername}`);
 
-        const octokit = await this.getOctokit(studentUsername);
+        const octokit = await this.getOctokitForUser(studentUsername, userOAuthToken);
 
         // Fetch repo metadata
         const repoRes = await octokit.rest.repos.get({ owner, repo });
@@ -218,6 +231,7 @@ export class GitHubAnalyzerService {
             firstCommitAt,
             lastCommitAt,
             description: repoData.description ?? null,
+            isPrivate: repoData.private,
             repoRisk,
         };
     }
@@ -230,27 +244,44 @@ export class GitHubAnalyzerService {
      * that maps directly to `rG` in the paper's fraud formula.
      *
      * rG = 0.4·r_fork + 0.3·r_pattern + 0.3·r_complexity
+     *
+     * @param userOAuthToken — When provided, private repositories are included
+     *   in the analysis using the student's own OAuth token.
      */
     public async analyzeProfile(
         username: string,
-        claimedRepoUrls: string[] = []
+        claimedRepoUrls: string[] = [],
+        userOAuthToken?: string
     ): Promise<GitHubAnalysisResult> {
-        logger.info(`Analyzing GitHub profile for ${username}...`);
+        logger.info(`Analyzing GitHub profile for ${username}${userOAuthToken ? " (with OAuth token — private repos included)" : " (public repos only)"}...`);
 
-        const octokit = await this.getOctokit(username);
+        const octokit = await this.getOctokitForUser(username, userOAuthToken);
 
         // ── 1. User profile ──────────────────────────────────────────────────
         const userRes = await octokit.rest.users.getByUsername({ username });
         const user = userRes.data;
 
         // ── 2. Repo listing ──────────────────────────────────────────────────
-        const reposRes = await octokit.rest.repos.listForUser({
-            username,
-            sort: "updated",
-            direction: "desc",
-            per_page: Math.min(GITHUB_LIMITS.maxReposToAnalyze, 100),
-        });
-        const repos = reposRes.data;
+        // When using the user's own OAuth token, listForAuthenticatedUser returns
+        // private repos too. listForUser only returns public repos.
+        let repos: any[];
+        if (userOAuthToken) {
+            const reposRes = await octokit.rest.repos.listForAuthenticatedUser({
+                sort: "updated",
+                direction: "desc",
+                per_page: Math.min(GITHUB_LIMITS.maxReposToAnalyze, 100),
+                affiliation: "owner",
+            });
+            repos = reposRes.data;
+        } else {
+            const reposRes = await octokit.rest.repos.listForUser({
+                username,
+                sort: "updated",
+                direction: "desc",
+                per_page: Math.min(GITHUB_LIMITS.maxReposToAnalyze, 100),
+            });
+            repos = reposRes.data;
+        }
 
         let totalCommits = 0;
         let forkedRepos = 0;
@@ -270,7 +301,7 @@ export class GitHubAnalyzerService {
 
             const { languages, diversityScore } = await this.fetchLanguageDiversity(octokit, repo.owner.login, repo.name);
             for (const [lang, bytes] of Object.entries(languages)) {
-                aggregatedLanguages[lang] = (aggregatedLanguages[lang] ?? 0) + bytes;
+                aggregatedLanguages[lang] = (aggregatedLanguages[lang] ?? 0) + (bytes as number);
             }
 
             let commitCount = 0;
@@ -312,6 +343,7 @@ export class GitHubAnalyzerService {
                 firstCommitAt,
                 lastCommitAt,
                 description: repo.description ?? null,
+                isPrivate: repo.private ?? false,
                 repoRisk,
             });
         }
@@ -328,7 +360,7 @@ export class GitHubAnalyzerService {
             if (alreadyAnalysed) continue;
 
             try {
-                const stats = await this.analyzeRepoContributions(repoUrl, username);
+                const stats = await this.analyzeRepoContributions(repoUrl, username, userOAuthToken);
                 repositories.push(stats);
                 totalCommits += stats.commitCount;
                 if (stats.isFork) forkedRepos++;
@@ -356,11 +388,7 @@ export class GitHubAnalyzerService {
         // r_pattern: proportion of original repos showing bursty commits
         const rPattern = analysedOriginal.length > 0 ? burstCount / analysedOriginal.length : 0;
 
-        // r_complexity: average of per-repo complexity risks
-        const rComplexity = analysedOriginal.length > 0
-            ? analysedOriginal.reduce((sum, r) => sum + (1.0 - 0), 0) / analysedOriginal.length
-            : 0;
-        // (We use per-repo repoRisk which already encodes complexity contribution)
+        // r_complexity: average per-repo risk (which encodes complexity contribution)
         const avgRepoComplexity = analysedOriginal.length > 0
             ? analysedOriginal.reduce((sum, r) => sum + r.repoRisk, 0) / analysedOriginal.length
             : 0;

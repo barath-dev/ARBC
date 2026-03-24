@@ -12,6 +12,15 @@ const envSchema = z.object({
   GITHUB_CLIENT_ID: z.string().optional(),
   GITHUB_CLIENT_SECRET: z.string().optional(),
   GITHUB_API_URL: z.string().default("https://api.github.com"),
+  // 64-char hex string (32 bytes) used to encrypt GitHub access tokens at rest.
+  GITHUB_TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  // Email / notifications (optional — silently skipped in dev if unset)
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default("noreply@arbc.io"),
+  APP_URL: z.string().default("http://localhost:3000"),
 });
 
 const parsed = envSchema.safeParse(process.env);

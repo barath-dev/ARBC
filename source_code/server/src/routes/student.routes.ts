@@ -8,7 +8,8 @@ import {
     listStudents,
     getStudentById,
     disconnectGithub,
-    verifyRepo
+    verifyRepo,
+    joinInstitution,
 } from "../controllers/student.controller";
 import { validate } from "../middlewares/validate";
 import { requireAuth, requireRole } from "../middlewares/auth";
@@ -20,6 +21,7 @@ const router = Router();
 router.get("/me", requireAuth, requireRole(["STUDENT"]), getMyProfile);
 router.put("/me", requireAuth, requireRole(["STUDENT"]), validate(updateStudentSchema), updateMyProfile);
 router.delete("/me/github", requireAuth, requireRole(["STUDENT"]), disconnectGithub);
+router.post("/me/join", requireAuth, requireRole(["STUDENT"]), joinInstitution);
 router.get("/me/verify-repo", requireAuth, requireRole(["STUDENT"]), verifyRepo);
 router.post("/me/claims", requireAuth, requireRole(["STUDENT"]), validate(createClaimSchema), addClaim);
 router.put("/me/claims/:id", requireAuth, requireRole(["STUDENT"]), validate(updateClaimSchema), updateClaim);

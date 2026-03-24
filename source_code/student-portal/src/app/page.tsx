@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { PortalShell } from "@/components/layout/portal-shell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Github, Plus, Briefcase, FileCode2, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Github, Plus, Briefcase, FileCode2, Loader2, Pencil, Trash2, Building2, KeyRound, CheckCircle2 } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "@/lib/store";
@@ -71,6 +71,30 @@ function DashboardContent() {
     onError: () => toast.error("Failed to delete claim"),
   });
 
+  const [inviteCode, setInviteCode] = useState("");
+  const joinMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post("/student/me/join", { code: inviteCode.trim() });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Successfully joined the institution! You can now see institution-specific jobs in your job board.");
+      setInviteCode("");
+      queryClient.invalidateQueries({ queryKey: ["student", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["jobs", "board"] });
+    },
+    onError: (err: any) => {
+      const code = err?.response?.data?.error?.code;
+      const messages: Record<string, string> = {
+        INVALID_CODE: "Invite code not found.",
+        CODE_USED: "This invite code has already been used.",
+        CODE_EXPIRED: "This invite code has expired.",
+        ALREADY_MEMBER: "You have already joined an institution.",
+      };
+      toast.error(messages[code] ?? "Failed to join. Please check the code and try again.");
+    },
+  });
+
   const projects = profile?.claims?.filter((c: any) => c.type === "PROJECT") ?? [];
   const experiences = profile?.claims?.filter((c: any) => c.type === "INTERNSHIP") ?? [];
 
@@ -96,6 +120,59 @@ function DashboardContent() {
           </p>
         </div>
 
+        {/* Join Institution */}
+        {profile?.institutionId ? (
+          <Card className="shadow-sm border-emerald-200 bg-emerald-50">
+            <CardContent className="flex items-center gap-4 py-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-emerald-900">
+                  Enrolled in {profile?.institution?.name ?? "an Institution"}
+                </p>
+                <p className="text-xs text-emerald-700">
+                  {profile?.institution?.domain} · Institution-specific job listings are now visible in your{" "}
+                  <Link href="/jobs" className="underline font-medium">job board</Link>.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="shadow-sm border-indigo-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-indigo-600" />
+                Join an Institution
+              </CardTitle>
+              <CardDescription>
+                Enter the invite code provided by your university or college to access institution-specific job listings and placements.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex max-w-md gap-2">
+                <div className="relative flex-1">
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && inviteCode.trim() && joinMutation.mutate()}
+                    placeholder="Paste invite code here…"
+                    className="w-full rounded-lg border border-slate-300 py-2 pr-3 pl-9 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+                <Button
+                  onClick={() => joinMutation.mutate()}
+                  disabled={!inviteCode.trim() || joinMutation.isPending}
+                  className="shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white"
+                >
+                  {joinMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Join"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* GitHub Connection */}
         <Card className="shadow-sm border-slate-200">
           <CardHeader>
@@ -104,33 +181,42 @@ function DashboardContent() {
               Developer Portfolio
             </CardTitle>
             <CardDescription>
-              We analyze your public repositories to cross-validate the skills you claim.
+              We analyze your public and private repositories to cross-validate the skills and projects you claim.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="max-w-md">
               {profile?.githubUsername ? (
-                <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden">
-                      <img src={`https://github.com/${profile.githubUsername}.png`} alt="GitHub Avatar" />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 bg-slate-200 rounded-full overflow-hidden">
+                        <img src={`https://github.com/${profile.githubUsername}.png`} alt="GitHub Avatar" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{profile.githubUsername}</p>
+                        <p className="text-xs text-emerald-600 font-medium">✓ Identity verified</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{profile.githubUsername}</p>
-                      <p className="text-xs text-emerald-600 font-medium">✓ Identity verified</p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={connectGithub}>Reconnect</Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => disconnectGithubMutation.mutate()}
+                        disabled={disconnectGithubMutation.isPending}
+                      >
+                        {disconnectGithubMutation.isPending ? "Disconnecting..." : "Disconnect"}
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={connectGithub}>Reconnect</Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => disconnectGithubMutation.mutate()}
-                      disabled={disconnectGithubMutation.isPending}
-                    >
-                      {disconnectGithubMutation.isPending ? "Disconnecting..." : "Disconnect"}
-                    </Button>
+                  {/* Prompt to reconnect for expanded private-repo scope */}
+                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                    <span className="mt-0.5">⚠️</span>
+                    <span>
+                      <strong>Private repository access now available.</strong> Click <strong>Reconnect</strong> to grant access to your private repos so they can be included in your verification analysis.
+                    </span>
                   </div>
                 </div>
               ) : (

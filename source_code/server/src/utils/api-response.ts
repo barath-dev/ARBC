@@ -33,6 +33,9 @@ export function sendError(
   code?: string,
   details?: unknown
 ): void {
+  if (statusCode === 400) {
+    console.error(`[DEBUG 400] sendError called with message: ${message}`, { code, details });
+  }
   const response: ApiErrorResponse = {
     success: false,
     error: { message, code, details },

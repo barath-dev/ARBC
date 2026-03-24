@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/lib/store";
-import { ShieldCheck, LayoutDashboard, Users, LogOut } from "lucide-react";
+import { ShieldCheck, LayoutDashboard, Users, LogOut, Briefcase } from "lucide-react";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -9,8 +9,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
     const navigation = [
         { name: "Overview", href: "/", icon: LayoutDashboard },
+        { name: "Jobs", href: "/jobs", icon: Briefcase },
         { name: "Students & Reports", href: "/students", icon: Users },
     ];
+
 
     return (
         <div className="flex min-h-screen flex-col">

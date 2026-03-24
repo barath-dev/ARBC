@@ -8,11 +8,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Enums ───────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// ─── ENUMS ───────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 
 enum Role {
   RECRUITER
   STUDENT
+  INSTITUTION // TPO / placement officer
 }
 
 enum VerificationStatus {
@@ -56,7 +59,43 @@ enum DocumentType {
   OTHER
 }
 
-// ─── User (Auth) ─────────────────────────────────────────
+// ─── Placement Portal Enums ───────────────────────────────
+
+enum JobVisibility {
+  PUBLIC
+  INSTITUTION_SPECIFIC
+}
+
+enum JobStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+enum BoardEntryStatus {
+  PENDING_INSTITUTION // company pushed — awaiting institution approval
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+enum BoardEntryInitiator {
+  COMPANY
+  INSTITUTION
+}
+
+enum ApplicationStatus {
+  APPLIED
+  UNDER_REVIEW
+  SHORTLISTED
+  REJECTED
+  OFFERED
+  WITHDRAWN
+}
+
+// ═══════════════════════════════════════════════════════════
+// ─── CORE AUTH ────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 
 model User {
   id        String   @id @default(cuid())
@@ -70,32 +109,44 @@ model User {
   student              Student?
   verificationsCreated VerificationRequest[] @relation("CreatedBy")
   auditLogs            AuditLog[]
+  institutionMember    InstitutionMember?
+  companyMember        CompanyMember?
+  notifications        Notification[]
 
   @@map("users")
 }
 
-// ─── Student Profile ─────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// ─── STUDENT ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 
 model Student {
-  id              String    @id @default(cuid())
-  userId          String    @unique
-  githubUsername  String?
-  githubAccessToken String? // Stored OAuth access token for GitHub API calls
-  linkedinUrl     String?
-  resumeUrl       String?
-  consentGiven    Boolean   @default(false)
-  consentDate     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  githubUsername    String?
+  githubAccessToken String?   // Stored encrypted OAuth token for GitHub API
+  linkedinUrl       String?
+  resumeUrl         String?
+  consentGiven      Boolean   @default(false)
+  consentDate       DateTime?
+  institutionId     String?   // bound institution
+  inviteCodeId      String?   @unique // invite code used during onboarding
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution          Institution?          @relation("InstitutionStudents", fields: [institutionId], references: [id])
+  inviteCode           InviteCode?           @relation("UsedInviteCode")
   claims               ResumeClaim[]
   verificationRequests VerificationRequest[]
+  applications         Application[]
 
   @@map("students")
 }
 
-// ─── Resume Claims ───────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// ─── RESUME CLAIMS ────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 
 model ResumeClaim {
   id          String    @id @default(cuid())
@@ -113,21 +164,25 @@ model ResumeClaim {
   student            Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
   inconsistencyFlags InconsistencyFlag[]
   skillVerifications SkillVerification[]
+  applicationClaims  ApplicationClaim[]
 
   @@map("resume_claims")
 }
 
-// ─── Verification Request ────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// ─── VERIFICATION PIPELINE ────────────────────────────────
+// ═══════════════════════════════════════════════════════════
 
 model VerificationRequest {
-  id          String             @id @default(cuid())
-  studentId   String
-  createdById String
-  status      VerificationStatus @default(PENDING)
-  startedAt   DateTime?
-  completedAt DateTime?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id            String             @id @default(cuid())
+  studentId     String
+  createdById   String
+  applicationId String?            // null = recruiter-triggered; set = application-scoped ARBC
+  status        VerificationStatus @default(PENDING)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
   student             Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
   createdBy           User                 @relation("CreatedBy", fields: [createdById], references: [id])
@@ -140,21 +195,24 @@ model VerificationRequest {
   @@map("verification_requests")
 }
 
-// ─── GitHub Analysis ─────────────────────────────────────
-
 model GitHubAnalysis {
-  id                    String   @id @default(cuid())
-  verificationRequestId String   @unique
+  id                    String    @id @default(cuid())
+  verificationRequestId String    @unique
   username              String
-  totalRepos            Int      @default(0)
-  totalCommits          Int      @default(0)
-  forkedRepos           Int      @default(0)
-  originalRepos         Int      @default(0)
+  totalRepos            Int       @default(0)
+  totalCommits          Int       @default(0)
+  forkedRepos           Int       @default(0)
+  originalRepos         Int       @default(0)
   languages             Json
-  contributionScore     Float    @default(0)
+  contributionScore     Float     @default(0)
   accountCreatedAt      DateTime?
+  /// rG from Algorithm 2 (0.0 = legit, 1.0 = high fraud risk)
+  githubRisk            Float     @default(0)
+  rFork                 Float     @default(0)
+  rPattern              Float     @default(0)
+  rComplexity           Float     @default(0)
   rawData               Json?
-  analyzedAt            DateTime @default(now())
+  analyzedAt            DateTime  @default(now())
 
   verificationRequest VerificationRequest @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
   repositories        Repository[]
@@ -163,46 +221,44 @@ model GitHubAnalysis {
 }
 
 model Repository {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   githubAnalysisId String
   name             String
   url              String
-  isFork           Boolean  @default(false)
-  stars            Int      @default(0)
+  isFork           Boolean   @default(false)
+  stars            Int       @default(0)
   language         String?
   languages        Json?
-  commitCount      Int      @default(0)
+  commitCount      Int       @default(0)
   firstCommitAt    DateTime?
   lastCommitAt     DateTime?
   description      String?
+  /// Per-repo risk contribution (0.0 legit to 1.0 suspicious)
+  repoRisk         Float     @default(0)
 
   githubAnalysis GitHubAnalysis @relation(fields: [githubAnalysisId], references: [id], onDelete: Cascade)
 
   @@map("repositories")
 }
 
-// ─── Company Verification (STUBBED) ─────────────────────
-
 model CompanyVerification {
-  id                    String   @id @default(cuid())
-  verificationRequestId String   @unique
+  id                    String    @id @default(cuid())
+  verificationRequestId String    @unique
   companyName           String
   contactEmail          String?
   claimedRole           String?
   claimedStartDate      DateTime?
   claimedEndDate        DateTime?
   verified              Boolean?
-  responseReceived      Boolean  @default(false)
+  responseReceived      Boolean   @default(false)
   responseDate          DateTime?
   responseNotes         String?
-  createdAt             DateTime @default(now())
+  createdAt             DateTime  @default(now())
 
   verificationRequest VerificationRequest @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
 
   @@map("company_verifications")
 }
-
-// ─── Document Analysis (STUBBED) ─────────────────────────
 
 model DocumentAnalysis {
   id                    String       @id @default(cuid())
@@ -221,8 +277,6 @@ model DocumentAnalysis {
 
   @@map("document_analyses")
 }
-
-// ─── Verification Result ─────────────────────────────────
 
 model VerificationResult {
   id                    String    @id @default(cuid())
@@ -244,8 +298,6 @@ model VerificationResult {
   @@map("verification_results")
 }
 
-// ─── Inconsistency Flags ─────────────────────────────────
-
 model InconsistencyFlag {
   id                   String       @id @default(cuid())
   verificationResultId String
@@ -262,8 +314,6 @@ model InconsistencyFlag {
   @@map("inconsistency_flags")
 }
 
-// ─── Skill Verification ──────────────────────────────────
-
 model SkillVerification {
   id                   String      @id @default(cuid())
   verificationResultId String
@@ -279,8 +329,6 @@ model SkillVerification {
   @@map("skill_verifications")
 }
 
-// ─── Audit Log ───────────────────────────────────────────
-
 model AuditLog {
   id                    String   @id @default(cuid())
   userId                String?
@@ -294,4 +342,162 @@ model AuditLog {
   verificationRequest VerificationRequest? @relation(fields: [verificationRequestId], references: [id])
 
   @@map("audit_logs")
+}
+
+// ═══════════════════════════════════════════════════════════
+// ─── PLACEMENT PORTAL ─────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+
+model Institution {
+  id        String   @id @default(cuid())
+  name      String
+  domain    String?
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members     InstitutionMember[]
+  students    Student[]           @relation("InstitutionStudents")
+  inviteCodes InviteCode[]
+  jobBoard    JobBoardEntry[]
+
+  @@map("institutions")
+}
+
+model InstitutionMember {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  institutionId String
+  createdAt     DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@map("institution_members")
+}
+
+model InviteCode {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  institutionId String
+  batchId       String?   // groups codes generated together
+  batchName     String?   // user-editable label for the batch
+  expiresAt     DateTime?
+  usedById      String?   @unique
+  createdAt     DateTime  @default(now())
+
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  usedBy      Student?    @relation("UsedInviteCode", fields: [usedById], references: [id])
+
+  @@index([batchId])
+  @@map("invite_codes")
+}
+
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  logoUrl   String?
+  website   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members CompanyMember[]
+  jobs    Job[]
+
+  @@map("companies")
+}
+
+model CompanyMember {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  companyId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_members")
+}
+
+model Job {
+  id            String        @id @default(cuid())
+  companyId     String
+  title         String
+  description   String
+  skills        String[]
+  location      String?
+  isRemote      Boolean       @default(false)
+  jobType       String        // INTERNSHIP | FULL_TIME | PART_TIME | CONTRACT
+  visibility    JobVisibility @default(PUBLIC)
+  status        JobStatus     @default(DRAFT)
+  deadline      DateTime?
+  openPositions Int           @default(1)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  company      Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  boardEntries JobBoardEntry[]
+  applications Application[]
+
+  @@map("jobs")
+}
+
+model JobBoardEntry {
+  id            String              @id @default(cuid())
+  jobId         String
+  institutionId String
+  status        BoardEntryStatus    @default(APPROVED)
+  initiator     BoardEntryInitiator
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  job         Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  institution Institution @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, institutionId])
+  @@map("job_board_entries")
+}
+
+model Application {
+  id        String            @id @default(cuid())
+  studentId String
+  jobId     String
+  status    ApplicationStatus @default(APPLIED)
+  coverNote String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  student         Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  job             Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  disclosedClaims ApplicationClaim[]
+
+  @@unique([studentId, jobId])
+  @@map("applications")
+}
+
+model ApplicationClaim {
+  applicationId String
+  claimId       String
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  claim       ResumeClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@id([applicationId, claimId])
+  @@map("application_claims")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
 }

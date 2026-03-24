@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, CheckCircle2, ShieldX, Info, GitCommit, FileText, Building2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ShieldX, Info, GitCommit, FileText, Building2, Github } from "lucide-react";
 import api from "@/lib/api";
 import { use } from "react";
 
@@ -81,7 +81,24 @@ export default function VerificationReport({ params }: { params: Promise<{ id: s
 
                 {/* Algorithms Score Breakdown */}
                 {result && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {/* GitHub Risk — derived from rG: 1.0 = legit, 0.0 = fraud */}
+                        <Card className="shadow-sm border-slate-200">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium text-slate-500 flex items-center gap-1.5">
+                                    <Github className="h-3.5 w-3.5" /> GitHub Legitimacy
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className={`text-2xl font-bold mb-2 ${
+                                    result.githubScore > 0.7 ? 'text-emerald-600' :
+                                    result.githubScore > 0.4 ? 'text-amber-500' : 'text-rose-600'
+                                }`}>
+                                    {(result.githubScore * 100).toFixed(0)}%
+                                </div>
+                                <Progress value={result.githubScore * 100} className="h-2" />
+                            </CardContent>
+                        </Card>
                         <Card className="shadow-sm border-slate-200">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-sm font-medium text-slate-500">Temporal Consistency</CardTitle>
@@ -187,7 +204,19 @@ export default function VerificationReport({ params }: { params: Promise<{ id: s
                     <TabsContent value="evidence" className="mt-4 space-y-4">
                         <Card>
                             <CardHeader>
-                                <CardTitle className="text-base">GitHub Analysis Snapshot</CardTitle>
+                                <CardTitle className="text-base flex items-center gap-2">
+                                    <Github className="h-4 w-4" /> GitHub Analysis Snapshot
+                                </CardTitle>
+                                {request.githubAnalysis && (
+                                    <CardDescription>
+                                        <span className="inline-flex gap-4 text-xs font-mono">
+                                            <span>rFork: <strong>{request.githubAnalysis.rFork?.toFixed(3) ?? "—"}</strong></span>
+                                            <span>rPattern: <strong>{request.githubAnalysis.rPattern?.toFixed(3) ?? "—"}</strong></span>
+                                            <span>rComplexity: <strong>{request.githubAnalysis.rComplexity?.toFixed(3) ?? "—"}</strong></span>
+                                            <span>rG: <strong>{request.githubAnalysis.githubRisk?.toFixed(3) ?? "—"}</strong></span>
+                                        </span>
+                                    </CardDescription>
+                                )}
                             </CardHeader>
                             <CardContent>
                                 <pre className="p-4 bg-slate-900 text-slate-50 rounded-lg text-xs overflow-x-auto">

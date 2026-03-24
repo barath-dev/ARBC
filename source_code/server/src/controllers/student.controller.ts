@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from "express";
 import { prisma } from "../config/database";
 import { sendSuccess, sendError } from "../utils/api-response";
 import { UpdateStudentInput, CreateClaimInput, UpdateClaimInput } from "../types";
+import { decryptToken } from "../utils/github-token-crypto";
+import { env } from "../config/environment";
 
 // ----- STUDENT ROLE ENDPOINTS -----
 
@@ -87,7 +89,14 @@ export async function verifyRepo(
             Accept: "application/vnd.github+json",
         };
         if (student.githubAccessToken) {
-            authHeaders["Authorization"] = `token ${student.githubAccessToken}`;
+            try {
+                const rawToken = env.GITHUB_TOKEN_ENCRYPTION_KEY
+                    ? decryptToken(student.githubAccessToken)
+                    : student.githubAccessToken; // plaintext in dev
+                authHeaders["Authorization"] = `token ${rawToken}`;
+            } catch {
+                console.warn("Could not decrypt GitHub token for verifyRepo — skipping Authorization header.");
+            }
         }
 
         // Check 1: Is the student the owner of the repo?
@@ -267,13 +276,27 @@ export async function getMyProfile(
 
         const student = await prisma.student.findUnique({
             where: { userId },
-            include: {
+            select: {
+                id: true,
+                userId: true,
+                githubUsername: true,
+                linkedinUrl: true,
+                resumeUrl: true,
+                consentGiven: true,
+                consentDate: true,
+                createdAt: true,
+                updatedAt: true,
+                institutionId: true,
+                institution: {
+                    select: { id: true, name: true, domain: true },
+                },
                 claims: true,
                 verificationRequests: {
                     include: {
                         result: true,
                     }
                 }
+                // githubAccessToken intentionally omitted from API response
             },
         });
 
@@ -297,7 +320,17 @@ export async function listStudents(
 ): Promise<void> {
     try {
         const students = await prisma.student.findMany({
-            include: {
+            select: {
+                id: true,
+                userId: true,
+                githubUsername: true,
+                linkedinUrl: true,
+                resumeUrl: true,
+                consentGiven: true,
+                consentDate: true,
+                createdAt: true,
+                updatedAt: true,
+                // githubAccessToken intentionally omitted
                 user: {
                     select: { name: true, email: true }
                 },
@@ -322,7 +355,17 @@ export async function getStudentById(
 
         const student = await prisma.student.findUnique({
             where: { id },
-            include: {
+            select: {
+                id: true,
+                userId: true,
+                githubUsername: true,
+                linkedinUrl: true,
+                resumeUrl: true,
+                consentGiven: true,
+                consentDate: true,
+                createdAt: true,
+                updatedAt: true,
+                // githubAccessToken intentionally omitted
                 user: { select: { name: true, email: true } },
                 claims: true,
                 verificationRequests: {
@@ -339,6 +382,62 @@ export async function getStudentById(
 
         sendSuccess(res, { student });
     } catch (error) {
+        next(error);
+    }
+}
+
+// POST /api/student/me/join — bind student to an institution via invite code
+export async function joinInstitution(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const { code } = req.body as { code?: string };
+        if (!code || typeof code !== "string") {
+            sendError(res, "Invite code is required", 400, "VALIDATION_ERROR");
+            return;
+        }
+
+        const userId = req.user!.userId;
+
+        const student = await prisma.student.findUnique({ where: { userId } });
+        if (!student) {
+            sendError(res, "Student profile not found", 404, "NOT_FOUND");
+            return;
+        }
+
+        if (student.institutionId) {
+            sendError(res, "Already joined an institution", 409, "ALREADY_MEMBER");
+            return;
+        }
+
+        // Atomic: find unused, non-expired code and mark it — prevents race conditions
+        const updated = await prisma.$transaction(async (tx) => {
+            const invite = await tx.inviteCode.findUnique({
+                where: { code },
+            });
+
+            if (!invite) throw Object.assign(new Error("Invalid invite code"), { status: 404, code: "INVALID_CODE" });
+            if (invite.usedById) throw Object.assign(new Error("Invite code already used"), { status: 409, code: "CODE_USED" });
+            if (invite.expiresAt && invite.expiresAt < new Date()) {
+                throw Object.assign(new Error("Invite code has expired"), { status: 410, code: "CODE_EXPIRED" });
+            }
+
+            // Mark code as used + bind student to institution atomically
+            await tx.inviteCode.update({
+                where: { id: invite.id },
+                data: { usedById: student.id },
+            });
+
+            return tx.student.update({
+                where: { id: student.id },
+                data: { institutionId: invite.institutionId, inviteCodeId: invite.id },
+            });
+        });
+
+        sendSuccess(res, { institutionId: updated.institutionId });
+    } catch (error: any) {
+        if (error?.status) {
+            sendError(res, error.message, error.status, error.code);
+            return;
+        }
         next(error);
     }
 }

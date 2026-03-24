@@ -5,6 +5,7 @@ import { generateToken } from "../utils/jwt";
 import { sendSuccess, sendError } from "../utils/api-response";
 import { RegisterInput, LoginInput } from "../types";
 import { env } from "../config/environment";
+import { encryptToken } from "../utils/github-token-crypto";
 
 export async function register(
   req: Request<{}, {}, RegisterInput>,
@@ -156,7 +157,8 @@ export async function githubOAuth(
     
     // Explicitly pass the local redirect URI so GitHub returns to localhost instead of the production Vercel URL
     const redirectUri = "http://localhost:3000/api/auth/github/callback";
-    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${env.GITHUB_CLIENT_ID}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
+    // Request 'repo' scope for full private repository access during analysis.
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${env.GITHUB_CLIENT_ID}&scope=repo%2Cread%3Auser&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
 
     sendSuccess(res, { url: githubAuthUrl });
   } catch (error) {
@@ -247,10 +249,14 @@ export async function githubOAuthCallback(
       return;
     }
 
-    // 3. Update the student record with username AND store the access token for future API calls
+    // 3. Update the student record with username AND store the encrypted access token for future API calls
+    const tokenToStore = env.GITHUB_TOKEN_ENCRYPTION_KEY
+        ? encryptToken(accessToken)
+        : accessToken; // fallback to plaintext if no encryption key configured (dev only)
+
     await prisma.student.update({
       where: { userId },
-      data: { githubUsername, githubAccessToken: accessToken },
+      data: { githubUsername, githubAccessToken: tokenToStore },
     });
 
     // 4. Redirect the user back to the student portal success page or dashboard

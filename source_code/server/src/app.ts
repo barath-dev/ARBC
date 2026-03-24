@@ -5,6 +5,7 @@ import { env } from "./config/environment";
 import { errorHandler } from "./middlewares/errorHandler";
 import apiRouter from "./routes";
 import { logger } from "./utils/logger";
+import { initQueue, stopQueue } from "./services/job-queue.service";
 
 const app = express();
 
@@ -29,8 +30,14 @@ app.use("/api", apiRouter);
 // Error handler (must be last)
 app.use(errorHandler);
 
-app.listen(env.PORT, () => {
+app.listen(env.PORT, async () => {
   logger.info(`ARBC server running on port ${env.PORT}`);
+  await initQueue();
+});
+
+process.on("SIGTERM", async () => {
+  await stopQueue();
+  process.exit(0);
 });
 
 export default app;

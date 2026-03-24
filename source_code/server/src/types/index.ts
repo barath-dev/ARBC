@@ -6,7 +6,7 @@ export const registerSchema = z.object({
   email: z.email(),
   password: z.string().min(8, "Password must be at least 8 characters"),
   name: z.string().min(1, "Name is required"),
-  role: z.enum(["RECRUITER", "STUDENT"]),
+  role: z.enum(["RECRUITER", "STUDENT", "INSTITUTION"]),
 });
 
 export const loginSchema = z.object({
@@ -67,7 +67,7 @@ export type PaginationInput = z.infer<typeof paginationSchema>;
 
 export interface JwtPayload {
   userId: string;
-  role: "RECRUITER" | "STUDENT";
+  role: "RECRUITER" | "STUDENT" | "INSTITUTION";
 }
 
 // ─── Express Request Extension ───────────────────────────
