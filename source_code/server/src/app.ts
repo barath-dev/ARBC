@@ -1,4 +1,3 @@
-import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { env } from "./config/environment";
@@ -32,6 +31,7 @@ app.use(errorHandler);
 
 app.listen(env.PORT, async () => {
   logger.info(`ARBC server running on port ${env.PORT}`);
+  logger.info(`GitHub Configuration: APP_ID=${env.GH_APP_ID ? "PRESENT" : "MISSING"}`);
   await initQueue();
 });
 

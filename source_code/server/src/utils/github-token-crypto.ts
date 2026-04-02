@@ -9,9 +9,9 @@ const TAG_LENGTH = 16;  // 128-bit auth tag
  * Accepts either a 64-char hex string (raw 32 bytes) or any string (scrypt-derived).
  */
 function getKey(): Buffer {
-    const raw = process.env.GITHUB_TOKEN_ENCRYPTION_KEY;
+    const raw = process.env.GH_TOKEN_ENCRYPTION_KEY;
     if (!raw) {
-        throw new Error("GITHUB_TOKEN_ENCRYPTION_KEY env var is not set. Cannot encrypt/decrypt GitHub tokens.");
+        throw new Error("GH_TOKEN_ENCRYPTION_KEY env var is not set. Cannot encrypt/decrypt GitHub tokens.");
     }
     // If it looks like a 64-char hex string, use it directly.
     if (/^[0-9a-fA-F]{64}$/.test(raw)) {

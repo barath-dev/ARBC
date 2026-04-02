@@ -90,7 +90,7 @@ export async function verifyRepo(
         };
         if (student.githubAccessToken) {
             try {
-                const rawToken = env.GITHUB_TOKEN_ENCRYPTION_KEY
+                const rawToken = env.GH_TOKEN_ENCRYPTION_KEY
                     ? decryptToken(student.githubAccessToken)
                     : student.githubAccessToken; // plaintext in dev
                 authHeaders["Authorization"] = `token ${rawToken}`;

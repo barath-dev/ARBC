@@ -38,7 +38,7 @@ export class VerificationOrchestratorService {
             let decryptedGithubToken: string | undefined;
             if (student.githubAccessToken) {
                 try {
-                    decryptedGithubToken = env.GITHUB_TOKEN_ENCRYPTION_KEY
+                    decryptedGithubToken = env.GH_TOKEN_ENCRYPTION_KEY
                         ? decryptToken(student.githubAccessToken)
                         : student.githubAccessToken; // plaintext in dev (no key set)
                 } catch (err) {
@@ -273,7 +273,7 @@ export async function verifyApplicationJob(job: { data: { applicationId: string 
         let decryptedGithubToken: string | undefined;
         if (student.githubAccessToken) {
             try {
-                decryptedGithubToken = env.GITHUB_TOKEN_ENCRYPTION_KEY
+                decryptedGithubToken = env.GH_TOKEN_ENCRYPTION_KEY
                     ? decryptToken(student.githubAccessToken)
                     : student.githubAccessToken;
             } catch {

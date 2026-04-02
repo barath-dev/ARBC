@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { z } from "zod/v4";
 
 const envSchema = z.object({
@@ -6,14 +7,14 @@ const envSchema = z.object({
   DATABASE_URL: z.string(),
   JWT_SECRET: z.string().default("dev-secret-change-in-production"),
   JWT_EXPIRES_IN: z.string().default("7d"),
-  // GITHUB_TOKEN: z.string().optional(),
-  GITHUB_APP_ID: z.string().optional(),
-  GITHUB_APP_PRIVATE_KEY: z.string().optional(),
-  GITHUB_CLIENT_ID: z.string().optional(),
-  GITHUB_CLIENT_SECRET: z.string().optional(),
-  GITHUB_API_URL: z.string().default("https://api.github.com"),
+  // GitHub App Configuration (Required)
+  GH_APP_ID: z.string(),
+  GH_APP_PRIVATE_KEY: z.string(),
+  GH_CLIENT_ID: z.string(),
+  GH_CLIENT_SECRET: z.string(),
+  GH_API_URL: z.string().default("https://api.github.com"),
   // 64-char hex string (32 bytes) used to encrypt GitHub access tokens at rest.
-  GITHUB_TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  GH_TOKEN_ENCRYPTION_KEY: z.string(),
   // Email / notifications (optional — silently skipped in dev if unset)
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().default(587),

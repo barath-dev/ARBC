@@ -70,8 +70,8 @@ export class GitHubAnalyzerService {
 
     constructor() {
         this.app = new App({
-            appId: env.GITHUB_APP_ID || "",
-            privateKey: env.GITHUB_APP_PRIVATE_KEY || "",
+            appId: env.GH_APP_ID || "",
+            privateKey: env.GH_APP_PRIVATE_KEY || "",
         });
     }
 

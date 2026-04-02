@@ -146,7 +146,7 @@ export async function githubOAuth(
   try {
     const userId = req.user!.userId; // Passed from requireAuth middleware
 
-    if (!env.GITHUB_CLIENT_ID) {
+    if (!env.GH_CLIENT_ID) {
       sendError(res, "GitHub Client ID not configured", 500, "CONFIG_ERROR");
       return;
     }
@@ -158,7 +158,7 @@ export async function githubOAuth(
     // Explicitly pass the local redirect URI so GitHub returns to localhost instead of the production Vercel URL
     const redirectUri = "http://localhost:3000/api/auth/github/callback";
     // Request 'repo' scope for full private repository access during analysis.
-    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${env.GITHUB_CLIENT_ID}&scope=repo%2Cread%3Auser&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${env.GH_CLIENT_ID}&scope=repo%2Cread%3Auser&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}&prompt=consent`;
 
     sendSuccess(res, { url: githubAuthUrl });
   } catch (error) {
@@ -197,7 +197,7 @@ export async function githubOAuthCallback(
       return;
     }
 
-    if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) {
+    if (!env.GH_CLIENT_ID || !env.GH_CLIENT_SECRET) {
       res.redirect("http://localhost:3001/status?error=server_misconfiguration");
       return;
     }
@@ -210,8 +210,8 @@ export async function githubOAuthCallback(
         Accept: "application/json",
       },
       body: JSON.stringify({
-        client_id: env.GITHUB_CLIENT_ID,
-        client_secret: env.GITHUB_CLIENT_SECRET,
+        client_id: env.GH_CLIENT_ID,
+        client_secret: env.GH_CLIENT_SECRET,
         code,
         redirect_uri: "http://localhost:3000/api/auth/github/callback",
       }),
@@ -250,7 +250,7 @@ export async function githubOAuthCallback(
     }
 
     // 3. Update the student record with username AND store the encrypted access token for future API calls
-    const tokenToStore = env.GITHUB_TOKEN_ENCRYPTION_KEY
+    const tokenToStore = env.GH_TOKEN_ENCRYPTION_KEY
         ? encryptToken(accessToken)
         : accessToken; // fallback to plaintext if no encryption key configured (dev only)
 
