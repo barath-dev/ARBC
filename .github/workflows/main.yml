@@ -40,22 +40,28 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: main
     steps:
+      - name: Debug Environment
+        run: |
+          echo "Path: $PATH"
+          echo "Docker location: $(which docker || echo 'not found')"
+          ls -l /usr/bin/docker || echo "/usr/bin/docker not found"
+
       - name: Stop and Remove Existing Container (if exists)
         run: |
-          docker stop arbc-backend-container || true
-          docker rm arbc-backend-container || true
+          /usr/bin/docker stop arbc-backend-container || true
+          /usr/bin/docker rm arbc-backend-container || true
 
       - name: Remove old images
         run: |
-          docker image prune -af --filter "label=com.docker.compose.project=arbc"
-          docker rmi barathwaj911/arbc-backend:latest || true
+          /usr/bin/docker image prune -af --filter "label=com.docker.compose.project=arbc"
+          /usr/bin/docker rmi barathwaj911/arbc-backend:latest || true
 
       - name: Pull Image from Docker Hub
-        run: docker pull barathwaj911/arbc-backend:latest
+        run: /usr/bin/docker pull barathwaj911/arbc-backend:latest
 
       - name: Run Docker Container
         run: |
-          docker run -d -p 3000:3000 --name arbc-backend-container \
+          /usr/bin/docker run -d -p 3000:3000 --name arbc-backend-container \
             -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
             -e JWT_SECRET='${{ secrets.JWT_SECRET }}' \
             -e JWT_EXPIRES_IN='${{ secrets.JWT_EXPIRES_IN }}' \
@@ -65,29 +71,35 @@ jobs:
               barathwaj911/arbc-backend:latest
 
       - name: Clean up old images
-        run: docker image prune -af
+        run: /usr/bin/docker image prune -af
 
   deploy-dev:
     needs: build
     if: github.ref == 'refs/heads/dev'
     runs-on: dev
     steps:
+      - name: Debug Environment
+        run: |
+          echo "Path: $PATH"
+          echo "Docker location: $(which docker || echo 'not found')"
+          ls -l /usr/bin/docker || echo "/usr/bin/docker not found"
+
       - name: Stop and Remove Existing Container (if exists)
         run: |
-          docker stop arbc-backend-container || true
-          docker rm arbc-backend-container || true
+          /usr/bin/docker stop arbc-backend-container || true
+          /usr/bin/docker rm arbc-backend-container || true
 
       - name: Remove old images
         run: |
-          docker image prune -af --filter "label=com.docker.compose.project=arbc"
-          docker rmi barathwaj911/arbc-backend:latest || true
+          /usr/bin/docker image prune -af --filter "label=com.docker.compose.project=arbc"
+          /usr/bin/docker rmi barathwaj911/arbc-backend:latest || true
 
       - name: Pull Image from Docker Hub
-        run: docker pull barathwaj911/arbc-backend:latest
+        run: /usr/bin/docker pull barathwaj911/arbc-backend:latest
 
       - name: Run Docker Container
         run: |
-          docker run -d -p 3000:3000 --name arbc-backend-container \
+          /usr/bin/docker run -d -p 3000:3000 --name arbc-backend-container \
             -e DATABASE_URL='${{ secrets.DATABASE_URL }}' \
             -e JWT_SECRET='${{ secrets.JWT_SECRET }}' \
             -e JWT_EXPIRES_IN='${{ secrets.JWT_EXPIRES_IN }}' \
@@ -97,4 +109,4 @@ jobs:
               barathwaj911/arbc-backend:latest
 
       - name: Clean up old images
-        run: docker image prune -af
+        run: /usr/bin/docker image prune -af
